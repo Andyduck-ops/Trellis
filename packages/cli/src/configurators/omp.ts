@@ -78,7 +78,7 @@ export async function configureOmp(cwd: string): Promise<void> {
     resolveBundledSkills(ctx),
   );
 
-  // Agents (class-1: no applyPullBasedPreludeMarkdown)
+  // Agents (class-1: no pull-based prelude)
   await writeAgents(path.join(configRoot, "agents"), getAllAgents());
 
   // Extension

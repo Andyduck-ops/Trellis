@@ -236,24 +236,7 @@ export function resolvePlaceholdersNeutral(
 // ---------------------------------------------------------------------------
 
 /** Skill description registry — maps template name to auto-trigger description. */
-const SKILL_DESCRIPTIONS: Record<string, string> = {
-  start:
-    "Initializes an AI development session by reading workflow guides, developer identity, git status, active tasks, and project guidelines from .omp-flow/. Classifies incoming tasks and routes to brainstorm, direct edit, or task workflow. Use when beginning a new coding session, resuming work, starting a new task, or re-establishing project context.",
-  continue:
-    "Resume work on the current task. Loads the workflow Phase Index, figures out which phase/step to pick up at, then pulls the step-level detail via get_context.py --mode phase. Use when coming back to an in-progress task and you need to know what to do next.",
-  "finish-work":
-    "Wrap up the current session: verify quality gate passed, remind user to commit, archive completed tasks, and record session progress to the developer journal. Use when done coding and ready to end the session.",
-  "before-dev":
-    "Discovers and injects project-specific coding guidelines from .omp-flow/spec/ before implementation begins. Reads spec indexes, pre-development checklists, and shared thinking guides for the target package. Use when starting a new coding task, before writing any code, switching to a different package, or needing to refresh project conventions and standards.",
-  brainstorm:
-    "Guides collaborative requirements discovery before implementation. Creates task directory, seeds PRD, asks high-value questions one at a time, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or complex task.",
-  check:
-    "Comprehensive quality verification: spec compliance, lint, type-check, tests, cross-layer data flow, code reuse, and consistency checks. Use when code is written and needs quality verification, before committing changes, or to catch context drift during long sessions.",
-  "break-loop":
-    "Deep bug analysis to break the fix-forget-repeat cycle. Analyzes root cause category, why fixes failed, prevention mechanisms, and captures knowledge into specs. Use after fixing a bug to prevent the same class of bugs.",
-  "update-spec":
-    "Captures executable contracts and coding conventions into .omp-flow/spec/ documents. Use when learning something valuable from debugging, implementing, or discussion that should be preserved for future sessions.",
-};
+const SKILL_DESCRIPTIONS: Record<string, string> = {};
 
 /**
  * Wrap resolved template content with YAML frontmatter for skill format.
@@ -278,12 +261,7 @@ export function wrapWithSkillFrontmatter(
  * One-line blurbs shown in a `/` command palette — kept separate from
  * SKILL_DESCRIPTIONS, which is long prose aimed at the skill matcher.
  */
-const COMMAND_DESCRIPTIONS: Record<string, string> = {
-  start: "Initialize a OmpFlow development session.",
-  continue: "Resume work on the current task at the correct phase.",
-  "finish-work":
-    "Wrap up the current session: quality gate, commit reminder, archive, journal.",
-};
+const COMMAND_DESCRIPTIONS: Record<string, string> = {};
 
 /** Wrap resolved command content with YAML frontmatter (name + description). */
 export function wrapWithCommandFrontmatter(
@@ -304,9 +282,7 @@ export function wrapWithCommandFrontmatter(
  * Argument-hint values for commands that accept positional args.
  * Used by OMP platform's YAML frontmatter.
  */
-const COMMAND_ARGUMENT_HINTS: Record<string, string> = {
-  "finish-work": "[task-name]",
-};
+const COMMAND_ARGUMENT_HINTS: Record<string, string> = {};
 
 /**
  * Wrap resolved command content with OMP-style YAML frontmatter.
@@ -564,99 +540,7 @@ export async function writeSharedHooks(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Pull-based sub-agent prelude (for class-2 platforms whose hook can't
-// inject sub-agent prompts: gemini, qoder, codex, copilot)
-//
-// Only implement & check need task-level context (task artifacts + jsonl specs).
-// research is orthogonal: it searches the spec tree and doesn't depend on an
-// active task. Hook-based platforms mirror this (their `get_research_context`
-// injects a spec-tree overview, not prd/jsonl). We leave research untouched.
-// ---------------------------------------------------------------------------
-
-export type SubAgentType = "implement" | "check";
-
-/** Build the standard "load OmpFlow context first" prelude block. */
-export function buildPullBasedPrelude(agentType: SubAgentType): string {
-  // JSONL filenames stay as implement.jsonl / check.jsonl — they are internal
-  // context buckets keyed by role (not by platform-visible agent name).
-  const jsonl = agentType === "check" ? "check.jsonl" : "implement.jsonl";
-
-  return replacePythonCommandLiterals(`## Required: Load OmpFlow Context First
-
-This platform does NOT auto-inject task context via hook. Before doing anything else, you MUST load context yourself.
-
-### Step 1: Find the active task path
-
-Try in order — stop at the first one that yields a task path:
-
-1. **Look at the dispatch prompt** you received from the main agent. If its first line is \`Active task: <path>\` (e.g. \`Active task: .omp-flow/tasks/04-17-foo\`), use that path. The main agent is required to include this line on class-2 platforms.
-2. **Run** \`python3 ./.omp-flow/scripts/task.py current --source\` and read the \`Current task:\` line.
-3. **If both fail** (no \`Active task:\` line in the prompt and \`task.py current\` returns no task), ask the user which task to work on; do NOT guess.
-
-### Step 2: Load task context from the resolved path
-
-1. Read \`<task-path>/${jsonl}\` — JSONL list of spec/research files relevant to this agent.
-2. For each entry in the JSONL, Read its \`file\` path — these are the specs and research notes you must follow.
-   **Skip rows without a \`"file"\` field** (e.g. \`{"_example": "..."}\` seed rows left over from \`task.py create\` before the curator ran).
-3. Read the task's \`prd.md\` (requirements), then \`design.md\` if present (technical design), then \`implement.md\` if present (execution plan).
-
-If \`${jsonl}\` has no curated entries (only a seed row, or the file is missing), fall back to: read the task artifacts, list available specs with \`python3 ./.omp-flow/scripts/get_context.py --mode packages\`, and pick the specs that match the task domain yourself. Do NOT block on the missing jsonl — lightweight tasks may be PRD-only, while complex tasks may also include \`design.md\` and \`implement.md\`.
-
-If the resolved task path has no \`prd.md\`, ask the user what to work on; do NOT proceed without context.
-
----
-
-`);
-}
-
-/** Insert prelude into a markdown agent definition (after YAML frontmatter). */
-export function injectPullBasedPreludeMarkdown(
-  content: string,
-  agentType: SubAgentType,
-): string {
-  const prelude = buildPullBasedPrelude(agentType);
-  const sections = splitMarkdownFrontmatter(content);
-
-  if (!sections) {
-    return prelude + content;
-  }
-
-  const head = `---\n${sections.frontmatter}\n---`;
-  const tailTrimmed = sections.body.replace(/^(\r?\n)+/, "");
-  return `${head}\n\n${prelude}${tailTrimmed}`;
-}
-
-/** Insert prelude into a TOML agent (codex `developer_instructions`). */
-export function injectPullBasedPreludeToml(
-  content: string,
-  agentType: SubAgentType,
-): string {
-  const prelude = buildPullBasedPrelude(agentType);
-  // Match: developer_instructions = """  followed by newline
-  const re = /(developer_instructions\s*=\s*""")(\r?\n)/;
-  if (!re.test(content)) {
-    return content;
-  }
-  return content.replace(re, `$1$2${prelude}`);
-}
-
-/** Best-effort detect agent type from filename ("omp-flow-implement.md" → "implement").
- *  Returns null for research and unknown names — they skip the prelude.
- */
-export function detectSubAgentType(name: string): SubAgentType | null {
-  const base = name.replace(/\.(md|toml|prompt\.md)$/, "");
-  if (base === "omp-flow-implement" || base === "omp-flow-check") {
-    return base === "omp-flow-implement" ? "implement" : "check";
-  }
-  return null;
-}
-
-/** Shared transform: given a list of agents, prepend pull-based prelude to
- *  implement/check definitions. Used by both configurator (init-time write)
- *  and collectPlatformTemplates (update-time hash comparison) so the two
- *  code paths always agree on what's on disk.
- */
+/** A pair of agent name and file content, shared by agent transforms. */
 export interface AgentContent {
   name: string;
   content: string;
@@ -679,19 +563,6 @@ function splitMarkdownFrontmatter(
     frontmatter: match[1],
     body: content.slice(match[0].length),
   };
-}
-
-export function applyPullBasedPreludeMarkdown(
-  agents: readonly AgentContent[],
-): AgentContent[] {
-  return agents.map((a) => {
-    const t = detectSubAgentType(a.name);
-    if (!t) return { ...a };
-    return {
-      ...a,
-      content: injectPullBasedPreludeMarkdown(a.content, t),
-    };
-  });
 }
 
 function mapLegacyToolToCopilot(tool: string): string[] {
@@ -765,17 +636,4 @@ export function normalizeCopilotMarkdownAgents(
     ...agent,
     content: normalizeCopilotMarkdownAgentFrontmatter(agent.content),
   }));
-}
-
-export function applyPullBasedPreludeToml(
-  agents: readonly AgentContent[],
-): AgentContent[] {
-  return agents.map((a) => {
-    const t = detectSubAgentType(a.name);
-    if (!t) return { ...a };
-    return {
-      ...a,
-      content: injectPullBasedPreludeToml(a.content, t),
-    };
-  });
 }

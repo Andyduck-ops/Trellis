@@ -12,7 +12,6 @@ import {
   resolvePlaceholders,
   resolveAllAsSkillsNeutral,
   resolveBundledSkills,
-  applyPullBasedPreludeToml,
   writeSkills,
   writeSharedHooks,
   replacePythonCommandLiterals,
@@ -60,7 +59,7 @@ export async function configureCodex(cwd: string): Promise<void> {
   // Codex is a class-2 (pull-based) platform: PreToolUse only fires for Bash
   // and CollabAgentSpawn hook is not implemented (#15486). Sub-agents must
   // load OmpFlow context themselves via the prelude injected here.
-  for (const agent of applyPullBasedPreludeToml(getAllAgents())) {
+  for (const agent of getAllAgents()) {
     await writeFile(
       path.join(codexAgentsRoot, `${agent.name}.toml`),
       replacePythonCommandLiterals(agent.content),

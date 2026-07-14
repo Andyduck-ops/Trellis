@@ -10,7 +10,6 @@ import {
   writeSkills,
   writeAgents,
   writeSharedHooks,
-  applyPullBasedPreludeMarkdown,
 } from "./shared.js";
 import { getAllAgents, getSettingsTemplate } from "../templates/qoder/index.js";
 
@@ -45,7 +44,7 @@ export async function configureQoder(cwd: string): Promise<void> {
   );
   await writeAgents(
     path.join(configRoot, "agents"),
-    applyPullBasedPreludeMarkdown(getAllAgents()),
+    getAllAgents(),
   );
   await writeSharedHooks(path.join(configRoot, "hooks"), "qoder");
 

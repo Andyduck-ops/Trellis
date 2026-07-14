@@ -10,7 +10,6 @@ import {
   writeSkills,
   writeAgents,
   writeSharedHooks,
-  applyPullBasedPreludeMarkdown,
 } from "./shared.js";
 import { getAllAgents, getSettingsTemplate } from "../templates/trae/index.js";
 
@@ -55,7 +54,7 @@ export async function configureTrae(cwd: string): Promise<void> {
   // 3. Agents — with pull-based prelude (class-2 pattern)
   await writeAgents(
     path.join(configRoot, "agents"),
-    applyPullBasedPreludeMarkdown(getAllAgents()),
+    getAllAgents(),
   );
 
   // 4. Shared hooks — Python scripts

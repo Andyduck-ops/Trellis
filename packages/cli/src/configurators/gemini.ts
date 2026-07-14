@@ -9,7 +9,6 @@ import {
   writeSkills,
   writeAgents,
   writeSharedHooks,
-  applyPullBasedPreludeMarkdown,
 } from "./shared.js";
 import {
   getAllAgents,
@@ -52,7 +51,7 @@ export async function configureGemini(cwd: string): Promise<void> {
   );
   await writeAgents(
     path.join(configRoot, "agents"),
-    applyPullBasedPreludeMarkdown(getAllAgents()),
+    getAllAgents(),
   );
   await writeSharedHooks(path.join(configRoot, "hooks"), "gemini");
 

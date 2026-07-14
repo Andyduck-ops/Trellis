@@ -2,7 +2,6 @@ import path from "node:path";
 import { AI_TOOLS } from "../types/ai-tools.js";
 import { ensureDir, writeFile } from "../utils/file-writer.js";
 import {
-  applyPullBasedPreludeMarkdown,
   collectSkillTemplates,
   replacePythonCommandLiterals,
   resolveCommands,
@@ -52,7 +51,7 @@ export function collectPiTemplates(): Map<string, string> {
     files.set(filePath, content);
   }
 
-  for (const agent of applyPullBasedPreludeMarkdown(getAllAgents())) {
+  for (const agent of getAllAgents()) {
     files.set(`.pi/agents/${agent.name}.md`, agent.content);
   }
 
@@ -89,7 +88,7 @@ export async function configurePi(cwd: string): Promise<void> {
   );
   await writeAgents(
     path.join(configRoot, "agents"),
-    applyPullBasedPreludeMarkdown(getAllAgents()),
+    getAllAgents(),
   );
 
   ensureDir(path.join(configRoot, "extensions", "omp-flow"));

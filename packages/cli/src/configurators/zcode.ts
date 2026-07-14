@@ -19,7 +19,6 @@ import {
   resolveSkills,
   writeSkills,
   writeAgents,
-  applyPullBasedPreludeMarkdown,
 } from "./shared.js";
 
 /**
@@ -46,7 +45,7 @@ export function collectZcodeTemplates(): Map<string, string> {
   }
 
   // 3. Sub-agents → .zcode/agents/ (with pull-based prelude)
-  for (const agent of applyPullBasedPreludeMarkdown(getAllAgents())) {
+  for (const agent of getAllAgents()) {
     files.set(`.zcode/agents/${agent.name}.md`, agent.content);
   }
 
@@ -77,6 +76,6 @@ export async function configureZcode(cwd: string): Promise<void> {
   // 3. Sub-agents → .zcode/agents/ (with pull-based prelude)
   await writeAgents(
     path.join(cwd, ".zcode", "agents"),
-    applyPullBasedPreludeMarkdown(getAllAgents()),
+    getAllAgents(),
   );
 }

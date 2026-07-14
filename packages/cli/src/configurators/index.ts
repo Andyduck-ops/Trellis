@@ -49,8 +49,6 @@ import {
   resolveSkillsNeutral,
   wrapWithCommandFrontmatter,
   collectSkillTemplates,
-  applyPullBasedPreludeMarkdown,
-  applyPullBasedPreludeToml,
   normalizeCopilotMarkdownAgents,
   type PlatformConfigureOptions,
 } from "./shared.js";
@@ -231,7 +229,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const skill of getCodexPlatformSkills()) {
         files.set(`.codex/skills/${skill.name}/SKILL.md`, skill.content);
       }
-      for (const agent of applyPullBasedPreludeToml(getCodexAgents())) {
+      for (const agent of getCodexAgents()) {
         files.set(`.codex/agents/${agent.name}.toml`, agent.content);
       }
       for (const hook of getCodexHooks()) {
@@ -308,7 +306,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       )) {
         files.set(filePath, content);
       }
-      for (const agent of applyPullBasedPreludeMarkdown(getGeminiAgents())) {
+      for (const agent of getGeminiAgents()) {
         files.set(`.gemini/agents/${agent.name}.md`, agent.content);
       }
       for (const [k, v] of collectSharedHooks(".gemini/hooks", "gemini")) {
@@ -351,7 +349,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
           return wrapWithCommandFrontmatter(name, content);
         },
       );
-      for (const agent of applyPullBasedPreludeMarkdown(getQoderAgents())) {
+      for (const agent of getQoderAgents()) {
         files.set(`.qoder/agents/${agent.name}.md`, agent.content);
       }
       for (const [k, v] of collectSharedHooks(".qoder/hooks", "qoder")) {
@@ -419,9 +417,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       }
       // Agents: reuse Cursor content + prepend pull-based prelude, then
       // normalize Cursor's Claude-style tools frontmatter for Copilot.
-      for (const agent of applyPullBasedPreludeMarkdown(
-        normalizeCopilotMarkdownAgents(getCursorAgents()),
-      )) {
+      for (const agent of normalizeCopilotMarkdownAgents(getCursorAgents())) {
         files.set(`.github/agents/${agent.name}.agent.md`, agent.content);
       }
       files.set(COPILOT_INSTRUCTIONS_PATH, getCopilotInstructions());
@@ -477,7 +473,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
           return wrapWithCommandFrontmatter(name, content);
         },
       );
-      for (const agent of applyPullBasedPreludeMarkdown(getTraeAgents())) {
+      for (const agent of getTraeAgents()) {
         files.set(`.trae/agents/${agent.name}.md`, agent.content);
       }
       for (const [k, v] of collectSharedHooks(".trae/hooks", "trae")) {
