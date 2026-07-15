@@ -637,3 +637,121 @@ export function normalizeCopilotMarkdownAgents(
     content: normalizeCopilotMarkdownAgentFrontmatter(agent.content),
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Pull-based sub-agent prelude (for class-2 / PULL platforms whose harness has
+// no PreToolUse(Agent)/CollabAgentSpawn hook and so cannot PUSH task context
+// into a sub-agent the way the Claude claude-dispatch-context hook does: codex.
+//
+// The sub-agent must PULL its bound, freeze-checked context itself by shelling
+// out to `omp_flow.py context --role <role> …`. This injector prepends that
+// "load context first" step to the codex agent's developer_instructions. It is
+// a PURE ADDITION wired only into the codex configurator + codex collect path;
+// the Claude adapter is PUSH and does not use it.
+//
+// Role-keyed for the 4 pull roles. qbd is NOT a pull agent: it receives the
+// self-contained `gate prepare` prompt at spawn, so detectAgentRole returns
+// null for omp-flow-qbd and it gets no prelude.
+// ---------------------------------------------------------------------------
+
+export type PullRole = "researcher" | "architect" | "executor" | "reviewer";
+
+/** The exact `omp_flow.py context` invocation each pull role must run.
+ *  Planning roles (researcher, architect) pass --task only; row roles
+ *  (executor, reviewer) also pass --row. <taskId>/<rowId> stay as literal
+ *  placeholder tokens — the sub-agent substitutes the IDs Main passed in its
+ *  dispatch prompt.
+ */
+function pullContextCommand(role: PullRole): string {
+  const base = "python .omp-flow/scripts/omp_flow.py context";
+  switch (role) {
+    case "researcher":
+      return `${base} --role researcher --task <taskId> --prompt "Research assigned topic"`;
+    case "architect":
+      return `${base} --role architect --task <taskId> --prompt "Architect assigned phase"`;
+    case "executor":
+      return `${base} --role executor --task <taskId> --row <rowId> --prompt "Implement assigned row"`;
+    case "reviewer":
+      return `${base} --role reviewer --task <taskId> --row <rowId> --prompt "Review assigned row"`;
+  }
+}
+
+/** Build the omp-flow "load context first" prelude block for a pull role.
+ *  Emits the literal `python …` command (matching the Claude template and the
+ *  dogfood tomls). Does NOT call replacePythonCommandLiterals — the downstream
+ *  configurator applies that transform to the whole agent body at write time,
+ *  and it is a no-op on `python` (only rewrites `python3`); a second internal
+ *  call would be redundant and risk a double-transform diff.
+ */
+export function buildPullBasedPrelude(role: PullRole): string {
+  return `## Required: Load OmpFlow Context First
+
+This platform does NOT auto-inject task context via hook. Before doing anything else you MUST load your bound context yourself. Run (substitute the IDs from your dispatch prompt):
+
+${pullContextCommand(role)}
+
+If the command fails or returns empty context, STOP. Do not proceed from repository guesses.
+
+---
+
+`;
+}
+
+/** Insert prelude into a TOML agent (codex `developer_instructions`).
+ *  Splice the prelude immediately after the opening `developer_instructions =
+ *  """` line so it lands at the TOP of the instructions, before the Identity
+ *  Guard ("load context first" ordering). If the anchor is absent, return the
+ *  content unchanged (safe no-op).
+ */
+export function injectPullBasedPreludeToml(
+  content: string,
+  role: PullRole,
+): string {
+  const prelude = buildPullBasedPrelude(role);
+  // Match: developer_instructions = """  followed by newline
+  const re = /(developer_instructions\s*=\s*""")(\r?\n)/;
+  if (!re.test(content)) {
+    return content;
+  }
+  return content.replace(re, `$1$2${prelude}`);
+}
+
+/** Best-effort detect the pull role from a codex agent filename
+ *  ("omp-flow-implement.toml" → "executor"). Returns null for omp-flow-qbd
+ *  (fed the prepared-gate prompt at spawn, not a pull prelude) and any unknown
+ *  name — they skip the prelude.
+ */
+export function detectAgentRole(name: string): PullRole | null {
+  const base = name.replace(/\.toml$/, "");
+  switch (base) {
+    case "omp-flow-research":
+      return "researcher";
+    case "omp-flow-architect":
+      return "architect";
+    case "omp-flow-implement":
+      return "executor";
+    case "omp-flow-check":
+      return "reviewer";
+    default:
+      return null;
+  }
+}
+
+/** Shared transform: given a list of codex agents, prepend the pull-based
+ *  prelude to each pull-role agent (qbd/unknown pass through unchanged). Used
+ *  by BOTH the codex configurator (init-time write) and the codex collect path
+ *  (update-time hash comparison) so the two code paths always agree on what is
+ *  on disk (the init/collect-symmetry lesson).
+ */
+export function applyPullBasedPreludeToml(
+  agents: readonly AgentContent[],
+): AgentContent[] {
+  return agents.map((a) => {
+    const role = detectAgentRole(a.name);
+    if (!role) return { ...a };
+    return {
+      ...a,
+      content: injectPullBasedPreludeToml(a.content, role),
+    };
+  });
+}
