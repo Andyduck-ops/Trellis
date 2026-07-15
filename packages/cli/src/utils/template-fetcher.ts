@@ -1,8 +1,9 @@
 /**
  * Remote template fetcher for OmpFlow CLI
  *
- * Fetches spec templates from the official marketplace:
- * https://github.com/mindfold-ai/marketplace
+ * Fetches spec templates from an explicitly configured registry source.
+ * No default marketplace is assumed; callers must pass an explicit index URL
+ * (or registry source) or no remote fetch is attempted.
  */
 
 import fs from "node:fs";
@@ -14,10 +15,6 @@ import { toPosix } from "./posix.js";
 // =============================================================================
 // Constants
 // =============================================================================
-
-export const TEMPLATE_INDEX_URL =
-  "https://raw.githubusercontent.com/mindfold-ai/marketplace/main/index.json";
-
 
 /** Map template type to installation path */
 const INSTALL_PATHS: Record<string, string> = {
@@ -410,13 +407,19 @@ function withTimeout<T>(
  * Fetch available templates from the remote index
  * Returns empty array on network error or timeout (allows fallback to blank)
  *
- * @param indexUrl - URL to fetch index.json from (defaults to official marketplace)
+ * @param indexUrl - URL to fetch index.json from. When omitted, no remote source
+ *                   is configured and an empty array is returned (no network call).
  */
 export async function fetchTemplateIndex(
   indexUrl?: string,
 ): Promise<SpecTemplate[]> {
+  // No default marketplace: without an explicit index URL there is no remote
+  // source, so return empty and let callers fall back to blank/native.
+  if (indexUrl === undefined) {
+    return [];
+  }
   try {
-    const url = indexUrl ?? TEMPLATE_INDEX_URL;
+    const url = indexUrl;
     const res = await fetch(url, {
       signal: AbortSignal.timeout(TIMEOUTS.INDEX_FETCH_MS),
     });

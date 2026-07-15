@@ -2,7 +2,9 @@
  * Unit tests for the workflow template resolver.
  *
  * Native resolution is offline (no fetch). Marketplace resolution is exercised
- * by stubbing `fetch` on the default omp-flow marketplace URL.
+ * by passing an explicit `{ source }` and stubbing `fetch` on that source's
+ * index/raw URLs. There is no default marketplace: with no source, non-native
+ * ids silently fall back to the bundled native workflow.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +16,10 @@ import {
   resolveWorkflowTemplate,
 } from "../../src/utils/workflow-resolver.js";
 import { workflowMdTemplate } from "../../src/templates/omp-flow/index.js";
+
+// Explicit marketplace source used to exercise remote resolution. There is no
+// default marketplace anymore, so every remote test must pass a source.
+const SOURCE = "gh:acme/marketplace";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -65,7 +71,7 @@ describe("resolveWorkflowTemplate(marketplace)", () => {
       }),
     );
 
-    const resolved = await resolveWorkflowTemplate("tdd");
+    const resolved = await resolveWorkflowTemplate("tdd", { source: SOURCE });
     expect(resolved.id).toBe("tdd");
     expect(resolved.source).toBe("marketplace");
     expect(resolved.content).toBe(fakeContent);
@@ -90,12 +96,12 @@ describe("resolveWorkflowTemplate(marketplace)", () => {
       ),
     );
 
-    await expect(resolveWorkflowTemplate("does-not-exist")).rejects.toThrow(
-      WorkflowResolveError,
-    );
-    await expect(resolveWorkflowTemplate("does-not-exist")).rejects.toThrow(
-      /workflow template/i,
-    );
+    await expect(
+      resolveWorkflowTemplate("does-not-exist", { source: SOURCE }),
+    ).rejects.toThrow(WorkflowResolveError);
+    await expect(
+      resolveWorkflowTemplate("does-not-exist", { source: SOURCE }),
+    ).rejects.toThrow(/workflow template/i);
   });
 
   it("surfaces a workflow-specific error when the index cannot be reached", async () => {
@@ -104,9 +110,9 @@ describe("resolveWorkflowTemplate(marketplace)", () => {
       vi.fn(async () => new Response("", { status: 500 })),
     );
 
-    await expect(resolveWorkflowTemplate("tdd")).rejects.toThrow(
-      /workflow template index/i,
-    );
+    await expect(
+      resolveWorkflowTemplate("tdd", { source: SOURCE }),
+    ).rejects.toThrow(/workflow template index/i);
   });
 
   it("rejects an entry whose path does not point to a .md file", async () => {
@@ -128,9 +134,9 @@ describe("resolveWorkflowTemplate(marketplace)", () => {
       ),
     );
 
-    await expect(resolveWorkflowTemplate("broken")).rejects.toThrow(
-      /workflow\.md/,
-    );
+    await expect(
+      resolveWorkflowTemplate("broken", { source: SOURCE }),
+    ).rejects.toThrow(/workflow\.md/);
   });
 
   it("rejects workflow paths that escape the marketplace root", async () => {
@@ -152,9 +158,24 @@ describe("resolveWorkflowTemplate(marketplace)", () => {
       ),
     );
 
-    await expect(resolveWorkflowTemplate("escape")).rejects.toThrow(
-      /marketplace root/,
-    );
+    await expect(
+      resolveWorkflowTemplate("escape", { source: SOURCE }),
+    ).rejects.toThrow(/marketplace root/);
+  });
+});
+
+describe("resolveWorkflowTemplate(no source, non-native id)", () => {
+  it("silently falls back to the bundled native workflow without any network call", async () => {
+    // No default marketplace exists: a non-native id with no source must NOT
+    // throw and must NOT hit the network — it degrades to native (design D-D).
+    const fetchSpy = vi.fn(async () => new Response("", { status: 500 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const resolved = await resolveWorkflowTemplate("tdd");
+    expect(resolved.id).toBe(NATIVE_WORKFLOW_ID);
+    expect(resolved.source).toBe("bundled");
+    expect(resolved.content).toBe(workflowMdTemplate);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -164,10 +185,23 @@ describe("listWorkflowTemplates", () => {
       "fetch",
       vi.fn(async () => new Response("", { status: 500 })),
     );
-    const { templates, errorMessage } = await listWorkflowTemplates();
+    const { templates, errorMessage } = await listWorkflowTemplates({
+      source: SOURCE,
+    });
     expect(errorMessage).toBeTruthy();
     expect(templates[0].id).toBe(NATIVE_WORKFLOW_ID);
     expect(templates[0].source).toBe("bundled");
+  });
+
+  it("returns only the native entry (no error, no network) when no source is configured", async () => {
+    const fetchSpy = vi.fn(async () => new Response("", { status: 500 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { templates, errorMessage } = await listWorkflowTemplates();
+    expect(errorMessage).toBeUndefined();
+    expect(templates).toHaveLength(1);
+    expect(templates[0].id).toBe(NATIVE_WORKFLOW_ID);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("includes workflow entries from the marketplace index", async () => {
@@ -201,7 +235,7 @@ describe("listWorkflowTemplates", () => {
       ),
     );
 
-    const { templates } = await listWorkflowTemplates();
+    const { templates } = await listWorkflowTemplates({ source: SOURCE });
     const ids = templates.map((t) => t.id);
     expect(ids).toContain(NATIVE_WORKFLOW_ID);
     expect(ids).toContain("tdd");

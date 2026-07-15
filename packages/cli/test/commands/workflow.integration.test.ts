@@ -55,6 +55,11 @@ const TDD_CONTENT = [
   "",
 ].join("\n");
 
+// Explicit marketplace source. There is no default marketplace anymore, so any
+// non-native workflow id must be paired with a source or it silently falls back
+// to the bundled native workflow (design D-D).
+const SOURCE = "gh:example/workflows";
+
 function stubMarketplaceFetch(): void {
   const index = {
     version: 1,
@@ -114,7 +119,11 @@ describe("trellis workflow integration", () => {
 
   it("init --workflow tdd writes marketplace content and removes the hash entry", async () => {
     stubMarketplaceFetch();
-    await init({ yes: true, workflow: "tdd" } as Record<string, unknown>);
+    await init({
+      yes: true,
+      workflow: "tdd",
+      workflowSource: SOURCE,
+    } as Record<string, unknown>);
 
     const wfPath = path.join(tmpDir, PATHS.WORKFLOW_GUIDE_FILE);
     const written = fs.readFileSync(wfPath, "utf-8");
@@ -168,13 +177,21 @@ describe("trellis workflow integration", () => {
     stubMarketplaceFetch();
 
     await expect(
-      init({ yes: true, workflow: "missing-id" } as Record<string, unknown>),
+      init({
+        yes: true,
+        workflow: "missing-id",
+        workflowSource: SOURCE,
+      } as Record<string, unknown>),
     ).rejects.toThrow(/workflow template/i);
   });
 
   it("trellis workflow --template native refreshes hash after switching from tdd", async () => {
     stubMarketplaceFetch();
-    await init({ yes: true, workflow: "tdd" } as Record<string, unknown>);
+    await init({
+      yes: true,
+      workflow: "tdd",
+      workflowSource: SOURCE,
+    } as Record<string, unknown>);
     expect(
       loadHashes(tmpDir)[PATHS.WORKFLOW_GUIDE_FILE],
     ).toBeUndefined();
@@ -197,7 +214,7 @@ describe("trellis workflow integration", () => {
     await init({ yes: true });
     expect(loadHashes(tmpDir)[PATHS.WORKFLOW_GUIDE_FILE]).toBeTruthy();
 
-    await runWorkflowCommand({ template: "tdd" });
+    await runWorkflowCommand({ template: "tdd", marketplace: SOURCE });
 
     const wfPath = path.join(tmpDir, PATHS.WORKFLOW_GUIDE_FILE);
     expect(fs.readFileSync(wfPath, "utf-8")).toBe(
@@ -221,9 +238,9 @@ describe("trellis workflow integration", () => {
     });
 
     try {
-      await expect(runWorkflowCommand({ template: "tdd" })).rejects.toThrow(
-        WorkflowCommandError,
-      );
+      await expect(
+        runWorkflowCommand({ template: "tdd", marketplace: SOURCE }),
+      ).rejects.toThrow(WorkflowCommandError);
 
       // File must remain untouched, and hash must not have been re-stamped.
       expect(fs.readFileSync(wfPath, "utf-8")).toBe("# My custom edits");
@@ -249,9 +266,9 @@ describe("trellis workflow integration", () => {
     });
 
     try {
-      await expect(runWorkflowCommand({ template: "tdd" })).rejects.toThrow(
-        WorkflowCommandError,
-      );
+      await expect(
+        runWorkflowCommand({ template: "tdd", marketplace: SOURCE }),
+      ).rejects.toThrow(WorkflowCommandError);
       expect(fs.readFileSync(wfPath, "utf-8")).toBe("# My custom edits");
     } finally {
       Object.defineProperty(process.stdin, "isTTY", {
@@ -269,7 +286,11 @@ describe("trellis workflow integration", () => {
     const originalContent = fs.readFileSync(wfPath, "utf-8");
     const originalHash = loadHashes(tmpDir)[PATHS.WORKFLOW_GUIDE_FILE];
 
-    await runWorkflowCommand({ template: "tdd", createNew: true });
+    await runWorkflowCommand({
+      template: "tdd",
+      createNew: true,
+      marketplace: SOURCE,
+    });
 
     const newPath = `${wfPath}.new`;
     expect(fs.existsSync(newPath)).toBe(true);
@@ -284,7 +305,7 @@ describe("trellis workflow integration", () => {
   it("trellis update after switching to tdd does not silently restore native workflow", async () => {
     stubMarketplaceFetch();
     await init({ yes: true });
-    await runWorkflowCommand({ template: "tdd" });
+    await runWorkflowCommand({ template: "tdd", marketplace: SOURCE });
 
     const wfPath = path.join(tmpDir, PATHS.WORKFLOW_GUIDE_FILE);
     const beforeUpdate = fs.readFileSync(wfPath, "utf-8");

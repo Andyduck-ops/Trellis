@@ -19,7 +19,6 @@ import path from "node:path";
 import { workflowMdTemplate } from "../templates/omp-flow/index.js";
 import {
   TIMEOUTS,
-  TEMPLATE_INDEX_URL,
   RegistryBackendError,
   parseRegistrySource,
   probeRegistryIndex,
@@ -72,7 +71,8 @@ export interface WorkflowTemplateListing {
 export interface WorkflowResolveOptions {
   /**
    * Optional marketplace source (giget-style or HTTPS URL).
-   * Omitted = use the default marketplace via TEMPLATE_INDEX_URL.
+   * Omitted = no marketplace configured (only the bundled native workflow is
+   * available; non-native ids silently fall back to native).
    */
   source?: string;
 }
@@ -163,12 +163,13 @@ export async function listWorkflowTemplates(
 }> {
   const result: WorkflowTemplateListing[] = [nativeListingEntry()];
 
-  let registry: RegistrySource | undefined;
-  let indexUrl = TEMPLATE_INDEX_URL;
-  if (options.source) {
-    registry = parseSourceOrThrow(options.source);
-    indexUrl = `${registry.rawBaseUrl}/index.json`;
+  if (!options.source) {
+    // No marketplace configured: only the bundled native entry is available.
+    return { templates: result };
   }
+
+  const registry = parseSourceOrThrow(options.source);
+  const indexUrl = `${registry.rawBaseUrl}/index.json`;
 
   const fetched = await fetchWorkflowEntries(registry, indexUrl);
   if (fetched.errorMessage) {
@@ -208,12 +209,15 @@ export async function resolveWorkflowTemplate(
     return nativeResolvedEntry();
   }
 
-  let registry: RegistrySource | undefined;
-  let indexUrl = TEMPLATE_INDEX_URL;
-  if (options.source) {
-    registry = parseSourceOrThrow(options.source);
-    indexUrl = `${registry.rawBaseUrl}/index.json`;
+  if (!options.source) {
+    // No marketplace configured for a non-native id: preserve the silent
+    // fallback to the bundled native workflow (design D-D / U1). No error is
+    // raised — this matches the pre-excision offline behavior.
+    return nativeResolvedEntry();
   }
+
+  const registry = parseSourceOrThrow(options.source);
+  const indexUrl = `${registry.rawBaseUrl}/index.json`;
 
   const fetched = await fetchWorkflowEntries(registry, indexUrl);
   if (fetched.errorMessage) {
@@ -267,10 +271,13 @@ async function fetchWorkflowFile(
   if (registry && useGit) {
     return fetchWorkflowFileGit(registry, relativePath);
   }
-  const rawBase = registry
-    ? registry.rawBaseUrl
-    : TEMPLATE_INDEX_URL.replace(/\/index\.json$/, "");
-  return fetchWorkflowFileHttp(rawBase, relativePath);
+  if (!registry) {
+    // Unreachable in practice: remote fetch only runs with a configured source.
+    throw new WorkflowResolveError(
+      "No workflow marketplace source configured; cannot fetch remote workflow file.",
+    );
+  }
+  return fetchWorkflowFileHttp(registry.rawBaseUrl, relativePath);
 }
 
 async function fetchWorkflowFileHttp(

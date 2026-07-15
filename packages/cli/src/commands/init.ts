@@ -56,7 +56,6 @@ import {
   downloadRegistryDirect,
   parseRegistrySource,
   TIMEOUTS,
-  TEMPLATE_INDEX_URL,
   type SpecTemplate,
   type TemplateStrategy,
   type RegistrySource,
@@ -1010,18 +1009,16 @@ export async function init(options: InitOptions): Promise<void> {
   let fetchedTemplates: SpecTemplate[] = [];
   let registryBackend: RegistryBackend | undefined;
 
-  // Determine the index URL based on registry
-  const indexUrl = registry
-    ? `${registry.rawBaseUrl}/index.json`
-    : TEMPLATE_INDEX_URL;
-
   if (monorepoPackages) {
     // Monorepo: template selection already handled above
   } else if (options.template) {
     // Template specified via --template flag
     selectedTemplate = options.template;
     if (registry) {
-      const probeResult = await probeRegistryIndex(indexUrl, registry);
+      const probeResult = await probeRegistryIndex(
+        `${registry.rawBaseUrl}/index.json`,
+        registry,
+      );
       registryBackend = probeResult.backend;
       if (probeResult.error) {
         console.log(chalk.red(`Error: ${probeResult.error.message}`));
@@ -1039,34 +1036,40 @@ export async function init(options: InitOptions): Promise<void> {
     }
   } else if (!options.yes) {
     // Interactive mode: show template selection
-    const timeoutSec = TIMEOUTS.INDEX_FETCH_MS / 1000;
-    const sourceLabel = registry ? registry.gigetSource : TEMPLATE_INDEX_URL;
-    console.log(
-      chalk.gray(`   Fetching available templates from ${sourceLabel}`),
-    );
-    let elapsed = 0;
-    const ticker = setInterval(() => {
-      elapsed++;
-      process.stdout.write(
-        `\r${chalk.gray(`   Loading... ${elapsed}s/${timeoutSec}s`)}`,
-      );
-    }, 1000);
-    process.stdout.write(chalk.gray(`   Loading... 0s/${timeoutSec}s`));
     let templates: SpecTemplate[];
     let registryProbeNotFound = false;
     let registryProbeError: Error | undefined;
     if (registry) {
-      const probeResult = await probeRegistryIndex(indexUrl, registry);
+      const timeoutSec = TIMEOUTS.INDEX_FETCH_MS / 1000;
+      console.log(
+        chalk.gray(
+          `   Fetching available templates from ${registry.gigetSource}`,
+        ),
+      );
+      let elapsed = 0;
+      const ticker = setInterval(() => {
+        elapsed++;
+        process.stdout.write(
+          `\r${chalk.gray(`   Loading... ${elapsed}s/${timeoutSec}s`)}`,
+        );
+      }, 1000);
+      process.stdout.write(chalk.gray(`   Loading... 0s/${timeoutSec}s`));
+      const probeResult = await probeRegistryIndex(
+        `${registry.rawBaseUrl}/index.json`,
+        registry,
+      );
       templates = probeResult.templates;
       registryProbeNotFound = probeResult.isNotFound;
       registryProbeError = probeResult.error;
       registryBackend = probeResult.backend;
+      clearInterval(ticker);
+      // Clear the loading line
+      process.stdout.write("\r\x1b[2K");
     } else {
-      templates = await fetchTemplateIndex(indexUrl);
+      // No registry configured: no default marketplace exists, so there is no
+      // remote source to fetch. Fall through to the blank-template picker.
+      templates = [];
     }
-    clearInterval(ticker);
-    // Clear the loading line
-    process.stdout.write("\r\x1b[2K");
     fetchedTemplates = templates;
 
     if (templates.length === 0 && registry && registryProbeNotFound) {
