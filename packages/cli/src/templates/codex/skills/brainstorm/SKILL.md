@@ -1,9 +1,9 @@
 ---
 name: brainstorm
-description: "Guide requirements discovery for a Trellis task after task-creation consent. Use when the user is ready to clarify requirements before implementation."
+description: "Guide requirements discovery for a OmpFlow task after task-creation consent. Use when the user is ready to clarify requirements before implementation."
 ---
 
-# Trellis Brainstorm
+# OmpFlow Brainstorm
 
 ## Non-Negotiable Interview Contract
 
@@ -25,17 +25,17 @@ Use this skill during Phase 1 planning to turn the user's request into clear req
 
 ## Preconditions
 
-Use this skill only after task-creation consent has been given and the user is ready to enter Trellis planning.
+Use this skill only after task-creation consent has been given and the user is ready to enter OmpFlow planning.
 
 If no task exists yet, create one:
 
 ```bash
-TASK_DIR=$({{PYTHON_CMD}} ./.trellis/scripts/task.py create "<short task title>" --slug <slug>)
+TASK_DIR=$({{PYTHON_CMD}} ./.omp-flow/scripts/omp_flow.py task create "<short task title>" --slug <slug>)
 ```
 
-Use a concise title from the user's request. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
+Use a concise title from the user's request. Use a slug without a date prefix. `omp_flow.py task create` adds the `MM-DD-` directory prefix automatically.
 
-`task.py create` creates the default `prd.md`. Update that file with the current understanding before asking follow-up questions.
+`omp_flow.py task create` creates the default `prd.md`. Update that file with the current understanding before asking follow-up questions.
 
 ## Planning Flow
 
@@ -43,7 +43,7 @@ Use a concise title from the user's request. Use a slug without a date prefix. `
 2. Inspect available evidence before asking questions:
    - code, tests, fixtures, and configs
    - README files, docs, existing specs, and domain notes
-   - related Trellis tasks, research files, and session history when present
+   - related OmpFlow tasks, research files, and session history when present
 3. Separate what you found into:
    - confirmed facts
    - product intent still needed from the user
@@ -53,7 +53,7 @@ Use a concise title from the user's request. Use a slug without a date prefix. `
 5. Include your recommended answer with the question.
 6. After each user answer, update `prd.md` before continuing.
 7. For complex tasks, create or update `design.md` and `implement.md` before implementation starts.
-8. Before final review or `task.py start`, run the PRD convergence pass below.
+8. Before final review or `omp_flow.py task start`, run the PRD convergence pass below.
 
 Do not invent a project-specific product/spec hierarchy. If the repository already has product, domain, or spec docs, use them. If it does not, proceed with the evidence that exists.
 
@@ -94,15 +94,15 @@ Do not ask process questions such as whether to search, inspect files, or contin
 - ordered implementation checklist
 - validation commands
 - risky files or rollback points
-- follow-up checks before `task.py start`
+- follow-up checks before `omp_flow.py task start`
 
-Lightweight tasks may have only `prd.md`. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
+Lightweight tasks may have only `prd.md`. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `omp_flow.py task start`.
 
-`implement.md` is not a replacement for `implement.jsonl`. On sub-agent-dispatch workflows, `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; the seed `_example` row does not count. Inline workflows skip this JSONL gate because Phase 2 loads context through `trellis-before-dev`.
+`implement.md` is not a replacement for `implement.jsonl`. On sub-agent-dispatch workflows, `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `omp_flow.py task start`; the seed `_example` row does not count. Inline workflows skip this JSONL gate because Phase 2 loads context through `omp-flow-before-dev`.
 
 ## PRD Convergence Pass
 
-Before declaring planning ready or running `task.py start`, rewrite `prd.md` once against the final structure described in the artifact rules above. This is not optional cleanup; it is the final planning gate.
+Before declaring planning ready or running `omp_flow.py task start`, rewrite `prd.md` once against the final structure described in the artifact rules above. This is not optional cleanup; it is the final planning gate.
 
 The pass must be lossless:
 
