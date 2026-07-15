@@ -66,7 +66,10 @@ describe("regression: session identity law (D5/R8)", () => {
 
 describe("regression: control-plane rebrand (D7/R2)", () => {
   it("no 'trellis' identifier survives in the deployed Python control plane", () => {
-    for (const file of walk(CONTROL_PLANE)) {
+    // Scan BOTH the omp_flow.py control plane AND the Claude hooks dir (which
+    // includes the opt-in statusline.py) so a half-rebrand of statusline.py —
+    // e.g. a live `.trellis` path or `_find_trellis_dir` — fails CI (R1/R4a).
+    for (const file of [...walk(CONTROL_PLANE), ...walk(CLAUDE_HOOKS)]) {
       const body = fs.readFileSync(file, "utf-8");
       expect(
         body.toLowerCase().includes("trellis"),

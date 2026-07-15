@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Trellis StatusLine — project-level status display for Claude Code.
+omp-flow StatusLine — project-level status display for Claude Code.
 
-Reads Claude Code session JSON from stdin + Trellis task data from filesystem.
+Reads Claude Code session JSON from stdin + omp-flow task data from filesystem.
 Outputs 1-2 lines:
   With active task:  [P1] Task title (status)  +  info line
   Without task:      info line only
@@ -48,88 +48,64 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
-def _normalize_task_ref(task_ref: str) -> str:
-    normalized = task_ref.strip()
-    if not normalized:
-        return ""
-
-    path_obj = Path(normalized)
-    if path_obj.is_absolute():
-        return str(path_obj)
-
-    normalized = normalized.replace("\\", "/")
-    while normalized.startswith("./"):
-        normalized = normalized[2:]
-
-    if normalized.startswith("tasks/"):
-        return f".trellis/{normalized}"
-
-    return normalized
-
-
-def _resolve_task_dir(trellis_dir: Path, task_ref: str) -> Path:
-    normalized = _normalize_task_ref(task_ref)
-    path_obj = Path(normalized)
-    if path_obj.is_absolute():
-        return path_obj
-    if normalized.startswith(".trellis/"):
-        return trellis_dir.parent / path_obj
-    return trellis_dir / "tasks" / path_obj
-
-
-def _find_trellis_dir() -> Path | None:
-    """Walk up from cwd to find .trellis/ directory."""
+def _find_flow_dir() -> Path | None:
+    """Walk up from cwd to find .omp-flow/ directory."""
     current = Path.cwd()
     for parent in [current, *current.parents]:
-        candidate = parent / ".trellis"
+        candidate = parent / ".omp-flow"
         if candidate.is_dir():
             return candidate
     return None
 
 
-def _get_current_task(trellis_dir: Path) -> dict | None:
-    """Load current task info through Trellis' active task resolver."""
-    return _get_current_task_for_input(trellis_dir, {})
+def _get_current_task(flow_dir: Path) -> dict | None:
+    """Load current task info through omp-flow's active task resolver."""
+    return _get_current_task_for_input(flow_dir, {})
 
 
-def _get_current_task_for_input(trellis_dir: Path, cc_data: dict) -> dict | None:
-    """Load current task info for the Claude Code session JSON."""
-    scripts_dir = trellis_dir / "scripts"
+def _get_current_task_for_input(flow_dir: Path, cc_data: dict) -> dict | None:
+    """Load current task info for the Claude Code session JSON.
+
+    Fail-open: any control-plane drift (resolver signature, ActiveTask shape,
+    absent task.json) degrades to info-line-only rather than crashing the
+    status bar. The resolver call, ActiveTask attribute access, and task.json
+    read all live inside this guard.
+    """
+    scripts_dir = flow_dir / "scripts"
     if str(scripts_dir) not in sys.path:
         sys.path.insert(0, str(scripts_dir))
     try:
         from common.active_task import resolve_active_task  # type: ignore[import-not-found]
+
+        active = resolve_active_task(flow_dir.parent, cc_data)
+        if not active.task_id:
+            return None
+
+        if active.stale:
+            return {
+                "title": active.task_id,
+                "status": "stale",
+                "priority": "P?",
+                "source": active.source,
+            }
+
+        task_data = _read_json(flow_dir / "tasks" / active.task_id / "task.json")
+        if not task_data:
+            return None
+
+        return {
+            "title": task_data.get("title") or task_data.get("name") or "unknown",
+            "status": task_data.get("status", "unknown"),
+            "priority": task_data.get("priority", "P2"),
+            "source": active.source,
+        }
     except Exception:
         return None
 
-    active = resolve_active_task(trellis_dir.parent, cc_data, platform="claude")
-    if not active.task_path:
-        return None
 
-    task_path = _resolve_task_dir(trellis_dir, active.task_path)
-    if active.stale:
-        return {
-            "title": task_path.name,
-            "status": "stale",
-            "priority": "P?",
-            "source": active.source,
-        }
-
-    task_data = _read_json(task_path / "task.json")
-    if not task_data:
-        return None
-
-    return {
-        "title": task_data.get("title") or task_data.get("name") or "unknown",
-        "status": task_data.get("status", "unknown"),
-        "priority": task_data.get("priority", "P2"),
-        "source": active.source,
-    }
-
-
-def _count_active_tasks(trellis_dir: Path) -> int:
+def _count_active_tasks(flow_dir: Path) -> int:
     """Count non-archived task directories with valid task.json."""
-    tasks_dir = trellis_dir / "tasks"
+    tasks_dir = flow_dir / "tasks"
     if not tasks_dir.is_dir():
         return 0
     count = 0
@@ -139,8 +115,8 @@ def _count_active_tasks(trellis_dir: Path) -> int:
     return count
 
 
-def _get_developer(trellis_dir: Path) -> str:
-    content = _read_text(trellis_dir / ".developer")
+def _get_developer(flow_dir: Path) -> str:
+    content = _read_text(flow_dir / ".developer")
     if not content:
         return "unknown"
     for line in content.splitlines():
@@ -249,13 +225,13 @@ def main() -> None:
     except (json.JSONDecodeError, ValueError):
         cc_data = {}
 
-    trellis_dir = _find_trellis_dir()
+    flow_dir = _find_flow_dir()
     SEP = " \033[90m·\033[0m "
 
-    # --- Trellis data ---
-    task = _get_current_task_for_input(trellis_dir, cc_data) if trellis_dir else None
-    dev = _get_developer(trellis_dir) if trellis_dir else ""
-    task_count = _count_active_tasks(trellis_dir) if trellis_dir else 0
+    # --- omp-flow data ---
+    task = _get_current_task_for_input(flow_dir, cc_data) if flow_dir else None
+    dev = _get_developer(flow_dir) if flow_dir else ""
+    task_count = _count_active_tasks(flow_dir) if flow_dir else 0
 
     # --- CC session data ---
     model = cc_data.get("model", {}).get("display_name", "?")

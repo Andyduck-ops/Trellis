@@ -152,6 +152,21 @@ describe("configurePlatform (claude-code, M1)", () => {
     expect(exists(".claude/hooks/statusline.py")).toBe(false);
   });
 
+  it("with { withStatusline: true } writes statusline.py AND a statusLine settings entry", async () => {
+    await configurePlatform("claude-code", tmpDir, { withStatusline: true });
+    expect(exists(".claude/hooks/statusline.py")).toBe(true);
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
+    ) as { statusLine?: { command?: string } };
+    expect(settings.statusLine?.command).toContain(
+      ".claude/hooks/statusline.py",
+    );
+    // The five default hooks are still deployed alongside the opt-in.
+    for (const hook of CLAUDE_HOOKS) {
+      expect(exists(`.claude/hooks/${hook}`)).toBe(true);
+    }
+  });
+
   it("deploys all twelve bundled omp-flow skills", async () => {
     await configurePlatform("claude-code", tmpDir);
     for (const skill of BUNDLED_SKILL_NAMES) {

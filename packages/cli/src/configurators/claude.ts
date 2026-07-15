@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { AI_TOOLS } from "../types/ai-tools.js";
 import { getClaudeTemplatePath } from "../templates/extract.js";
-import { getClaudeHooks } from "../templates/claude/index.js";
+import { getClaudeHooks, getStatuslineHook } from "../templates/claude/index.js";
 import { ensureDir, writeFile } from "../utils/file-writer.js";
 import {
   resolvePlaceholders,
@@ -33,6 +33,28 @@ function shouldExclude(filename: string): boolean {
 }
 
 /**
+ * Inject the opt-in `statusLine` block into the settings.json template.
+ * Runs BEFORE resolvePlaceholders so `{{PYTHON_CMD}}` resolves through the
+ * normal path. The flag-off path never calls this — default output stays
+ * byte-identical.
+ *
+ * Mirrors `preserveExistingClaudeStatusLine` (update.ts) exactly: parse →
+ * assign (key lands at the END of the object) → stringify(null, 2) + "\n".
+ * Byte-parity matters: `omp-flow update` re-derives the expected settings.json
+ * via that preserve step, so any divergence (e.g. a different key position)
+ * makes update flag a phantom settings.json change on every fresh opted-in
+ * project.
+ */
+function injectStatusLine(content: string): string {
+  const settings = JSON.parse(content) as Record<string, unknown>;
+  settings.statusLine = {
+    type: "command",
+    command: "{{PYTHON_CMD}} .claude/hooks/statusline.py",
+  };
+  return `${JSON.stringify(settings, null, 2)}\n`;
+}
+
+/**
  * Recursively copy directory, excluding build artifacts and the commands/ +
  * hooks/ dirs (hooks are written from `getClaudeHooks()`; commands, if any,
  * from common templates).
@@ -41,6 +63,7 @@ async function copyDirFiltered(
   src: string,
   dest: string,
   skipDirs: string[] = [],
+  withStatusline = false,
 ): Promise<void> {
   ensureDir(dest);
 
@@ -58,6 +81,9 @@ async function copyDirFiltered(
     } else {
       let content = readFileSync(srcPath, "utf-8");
       if (entry === "settings.json") {
+        if (withStatusline) {
+          content = injectStatusLine(content);
+        }
         content = resolvePlaceholders(content);
       }
       await writeFile(destPath, replacePythonCommandLiterals(content));
@@ -92,26 +118,36 @@ async function writeClaudeHooks(hooksDir: string): Promise<void> {
  *   hooks parse Claude-specific payloads)
  * - commands/omp-flow/ — slash commands (omp-flow ships none in M1; loop inert)
  * - skills/<name>/SKILL.md — bundled workflow skills (12 in M1)
- *
- * F1 disposition (M1): the `--with-statusline` opt-in is NOT deployed. The
- * bundled `statusline.py` is Trellis-shaped (reads the removed `.trellis` task
- * layout) and would install broken, so no statusLine hook or settings entry is
- * written. Re-enabling it requires an omp-flow-native rewrite (post-M1).
+ * - with `withStatusline`: opt-in statusline.py hook + `statusLine` settings
+ *   entry (off by default; `omp-flow init --with-statusline`). The bundled
+ *   `statusline.py` is omp-flow-native (reads the `.omp-flow` task layout and
+ *   fails open on control-plane drift). It stays OUT of `getClaudeHooks()`, so
+ *   `omp-flow update` never force-installs it on opted-out projects.
  */
 export async function configureClaude(
   cwd: string,
-  _options?: PlatformConfigureOptions,
+  options?: PlatformConfigureOptions,
 ): Promise<void> {
   const sourcePath = getClaudeTemplatePath();
   const destPath = path.join(cwd, ".claude");
   const ctx = AI_TOOLS["claude-code"].templateContext;
+  const withStatusline = options?.withStatusline === true;
 
   // Copy platform-specific files (agents, settings) — hooks + commands excluded
   // (hooks come from getClaudeHooks(); commands from common templates).
-  await copyDirFiltered(sourcePath, destPath, ["commands", "hooks"]);
+  await copyDirFiltered(sourcePath, destPath, ["commands", "hooks"], withStatusline);
 
   // Claude hook scripts — same source (getClaudeHooks) the update collector reads
   await writeClaudeHooks(path.join(destPath, "hooks"));
+
+  // Opt-in statusLine hook (Claude-only event; not part of getClaudeHooks() and
+  // not in the update collector, so `omp-flow update` never force-installs it).
+  if (withStatusline) {
+    await writeFile(
+      path.join(destPath, "hooks", "statusline.py"),
+      replacePythonCommandLiterals(getStatuslineHook()),
+    );
+  }
 
   // Slash commands (omp-flow ships none in M1; the loop is inert but kept as a
   // mechanism for future commands).
