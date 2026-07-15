@@ -15,6 +15,7 @@ import {
   writeSkills,
   writeSharedHooks,
   replacePythonCommandLiterals,
+  applyPullBasedPreludeToml,
 } from "./shared.js";
 
 /**
@@ -59,7 +60,14 @@ export async function configureCodex(cwd: string): Promise<void> {
   // Codex is a class-2 (pull-based) platform: PreToolUse only fires for Bash
   // and CollabAgentSpawn hook is not implemented (#15486). Sub-agents must
   // load OmpFlow context themselves via the prelude injected here.
-  for (const agent of getAllAgents()) {
+  // applyPullBasedPreludeToml injects the per-role pull block into agent.content
+  // BEFORE replacePythonCommandLiterals runs (transform order: inject → rewrite;
+  // the injected literal uses `python`, so the rewrite is a no-op on it). The
+  // update/collect path in ./index.ts wraps the SAME source list identically so
+  // both emit byte-identical tomls (0 drift). The pulled context is FREEZE-ONLY
+  // (design D2): it inherits Claude's per-row verify_row_frozen/status guarantee
+  // but NOT the push-path session/active-task cross-check.
+  for (const agent of applyPullBasedPreludeToml(getAllAgents())) {
     await writeFile(
       path.join(codexAgentsRoot, `${agent.name}.toml`),
       replacePythonCommandLiterals(agent.content),

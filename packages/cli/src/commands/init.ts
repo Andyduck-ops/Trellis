@@ -617,18 +617,22 @@ export async function init(options: InitOptions): Promise<void> {
     delete options.windsurf;
   }
 
-  // M1 platform gate: omp-flow ships the Claude Code toolchain only. Every other
-  // platform's methodology resources are parked for a later milestone (M2/M3),
-  // so explicitly requesting one fails fast rather than deploying a
-  // methodology-less platform (PRD R10 / AC12).
-  const requestedNonClaude = getInitToolChoices()
-    .filter((t) => t.key !== "claude" && options[t.key as keyof InitOptions])
+  // Platform gate: omp-flow ships the Claude Code and Codex toolchains. Every
+  // other platform's methodology resources are still parked for a later
+  // milestone, so explicitly requesting one fails fast rather than deploying a
+  // methodology-less platform (PRD R10 / AC12; M3 lifts the park for codex only).
+  const shippedPlatforms = new Set<string>(["claude", "codex"]);
+  const requestedParked = getInitToolChoices()
+    .filter(
+      (t) =>
+        !shippedPlatforms.has(t.key) && options[t.key as keyof InitOptions],
+    )
     .map((t) => t.key);
-  if (requestedNonClaude.length > 0) {
+  if (requestedParked.length > 0) {
     console.error(
       chalk.red(
-        `✖ Platform(s) not available in this release: ${requestedNonClaude.join(", ")}.\n` +
-          `  omp-flow M1 ships Claude Code only; the other platforms are parked for M2/M3.`,
+        `✖ Platform(s) not available in this release: ${requestedParked.join(", ")}.\n` +
+          `  omp-flow ships Claude Code and Codex; the other platforms are parked for a later milestone.`,
       ),
     );
     process.exit(1);
@@ -636,12 +640,6 @@ export async function init(options: InitOptions): Promise<void> {
 
   const cwd = process.cwd();
   const isFirstInit = !fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW));
-  // Captured here (before createWorkflowStructure + init_developer run) so
-  // the three-branch dispatch at the bottom can tell "fresh clone joiner"
-  // (.omp-flow/ exists, .developer missing) apart from "creator first init".
-  const hadDeveloperFileAtStart = fs.existsSync(
-    path.join(cwd, DIR_NAMES.WORKFLOW, ".developer"),
-  );
 
   // Generate ASCII art banner dynamically using FIGlet "Rebel" font
   const banner = figlet.textSync("OmpFlow", { font: "Rebel" });
@@ -979,11 +977,15 @@ export async function init(options: InitOptions): Promise<void> {
     tools = answers.tools;
   }
 
-  // M1: only Claude Code is shipped. Drop any non-claude selection that reached
-  // here via the -y defaults or interactive multi-select (explicit non-claude
-  // flags were already rejected at the top of init()). No non-claude platform is
-  // ever configured in M1.
-  tools = tools.filter((t) => t === AI_TOOLS["claude-code"].cliFlag);
+  // Only Claude Code and Codex are shipped. Drop any still-parked selection that
+  // reached here via the -y defaults or interactive multi-select (explicit
+  // parked flags were already rejected at the top of init()). No parked platform
+  // is ever configured (M3 lifts the park for codex only).
+  const shippedCliFlags = new Set<string>([
+    AI_TOOLS["claude-code"].cliFlag,
+    AI_TOOLS.codex.cliFlag,
+  ]);
+  tools = tools.filter((t) => shippedCliFlags.has(t));
 
   // Treat unknown project type as fullstack
   const projectType: ProjectType =

@@ -39,6 +39,7 @@ import { configureOmp, collectOmpTemplates } from "./omp.js";
 
 // Shared utilities
 import {
+  applyPullBasedPreludeToml,
   replacePythonCommandLiterals,
   resolvePlaceholders,
   resolveAllAsSkills,
@@ -233,7 +234,11 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const skill of getCodexPlatformSkills()) {
         files.set(`.codex/skills/${skill.name}/SKILL.md`, skill.content);
       }
-      for (const agent of getCodexAgents()) {
+      // Wrap the SAME source list as configureCodex (../configurators/codex.ts)
+      // so init and update/collect emit byte-identical agent tomls (0 drift).
+      // The prelude is injected into agent.content here; replaceInMap's later
+      // replacePythonCommandLiterals is a no-op on the `python` literal.
+      for (const agent of applyPullBasedPreludeToml(getCodexAgents())) {
         files.set(`.codex/agents/${agent.name}.toml`, agent.content);
       }
       for (const hook of getCodexHooks()) {
@@ -513,7 +518,10 @@ export const PLATFORM_MANAGED_DIRS = PLATFORM_IDS.flatMap((id) =>
 );
 
 /** All directories managed by OmpFlow (including .omp-flow itself) */
-export const ALL_MANAGED_DIRS = [".omp-flow", ...new Set(PLATFORM_MANAGED_DIRS)];
+export const ALL_MANAGED_DIRS = [
+  ".omp-flow",
+  ...new Set(PLATFORM_MANAGED_DIRS),
+];
 
 /**
  * Detect which platforms are configured by checking for configDir existence.

@@ -180,12 +180,12 @@ describe("init() integration (omp-flow M1, Claude-only)", () => {
         throw new Error(`process.exit(${code ?? 0})`);
       }) as never);
 
-    await expect(init({ codex: true, yes: true })).rejects.toThrow(
+    await expect(init({ opencode: true, yes: true })).rejects.toThrow(
       "process.exit(1)",
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
     const combined = errors.join("\n");
     expect(combined).toContain("parked");
-    expect(combined.toLowerCase()).toContain("codex");
+    expect(combined.toLowerCase()).toContain("opencode");
   });
 });
