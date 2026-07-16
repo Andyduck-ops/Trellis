@@ -399,16 +399,6 @@ async function handleReinit(
       }
     }
 
-    // Opt-in Claude Code statusLine: only for platforms actually being added
-    // (already-configured ones are skipped in the loop below)
-    await maybePromptStatuslineOptIn(
-      options,
-      platformsToAdd.filter((tool) => {
-        const pid = resolveCliFlag(tool as CliFlag);
-        return !!pid && !configuredPlatforms.has(pid);
-      }),
-    );
-
     const reinitWritten = startRecordingWrites(cwd);
     try {
       for (const tool of platformsToAdd) {
@@ -485,24 +475,6 @@ async function handleReinit(
   }
 
   return true;
-}
-
-/**
- * Interactive opt-in for the Claude Code statusLine when `--with-statusline`
- * was not passed. Fires only when Claude Code is among the platforms about to
- * be configured and never in -y mode. Mutates `options.withStatusline` so the
- * configurePlatform call sites and the install hint read the same answer; the
- * `!== undefined` gate doubles as the asked-once-per-run guard.
- */
-async function maybePromptStatuslineOptIn(
-  _options: InitOptions,
-  _toolKeys: string[],
-): Promise<void> {
-  // M1 (F1 disposition): the statusLine opt-in is dropped. The bundled
-  // statusline.py is Trellis-shaped (reads the removed `.trellis` task layout)
-  // and configureClaude no longer deploys it, so prompting for it would be
-  // misleading. No-op until an omp-flow-native statusline lands (post-M1).
-  return;
 }
 
 interface InitOptions {
@@ -998,8 +970,9 @@ export async function init(options: InitOptions): Promise<void> {
     return;
   }
 
-  // Opt-in Claude Code statusLine: confirm interactively when the flag wasn't passed
-  await maybePromptStatuslineOptIn(options, tools);
+  // Claude Code statusLine is opt-in only via `--with-statusline`; when the flag
+  // is set, configureClaude deploys the omp-flow-native statusline hook. There is
+  // no interactive prompt (the M1-era opt-in stub was a no-op and is removed).
 
   // ==========================================================================
   // Template Selection (single-repo only; monorepo handles templates above)

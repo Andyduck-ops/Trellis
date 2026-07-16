@@ -244,7 +244,11 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const hook of getCodexHooks()) {
         files.set(`.codex/hooks/${hook.name}`, hook.content);
       }
-      // Shared hooks (inject-workflow-state.py only) — mirror configureCodex
+      // Shared hooks: codex's SHARED_HOOKS_BY_PLATFORM entry is [] (codex ships
+      // inject-workflow-state.py from its OWN templates/codex/hooks/ dir), so
+      // this collect currently yields nothing — a deliberate no-op kept for
+      // symmetry with the shipped-platform collectors, and the shared-hooks
+      // mechanism itself is presently emptied (getSharedHookScripts() → []).
       for (const [k, v] of collectSharedHooks(".codex/hooks", "codex")) {
         files.set(k, v);
       }
@@ -416,8 +420,11 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const hook of getCopilotHooks()) {
         files.set(`.github/copilot/hooks/${hook.name}`, hook.content);
       }
-      // Shared hooks (inject-workflow-state.py only). Copilot bundles its own
-      // session-start.py above; sub-agent context is pull-based (class-2).
+      // Shared hooks: copilot's SHARED_HOOKS_BY_PLATFORM entry declares
+      // inject-workflow-state.py, but the shared-hooks mechanism is presently
+      // emptied (getSharedHookScripts() → []), so this collect is currently a
+      // no-op. Copilot bundles its own session-start.py above; sub-agent context
+      // is pull-based (class-2). (Copilot is a parked/non-shipped platform.)
       for (const [k, v] of collectSharedHooks(
         ".github/copilot/hooks",
         "copilot",

@@ -77,11 +77,14 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
   SharedHookPlatform,
   readonly SharedHookName[]
 > = {
-  claude: [
-    "session-start.py",
-    "inject-workflow-state.py",
-    "inject-subagent-context.py",
-  ],
+  // Claude ships its hooks from `templates/claude/hooks/` via its own
+  // configurator (configureClaude → getClaudeHooks()); it never reads this
+  // table or calls writeSharedHooks/collectSharedHooks. Keeping this empty is
+  // the single source of truth — the prior list was unread AND wrong (it named
+  // `inject-subagent-context.py`, which does not exist for Claude; the real
+  // Claude sub-agent hook is `inject-agent-context.py`). Exact analog of the
+  // codex entry below.
+  claude: [],
   cursor: [
     "session-start.py",
     "inject-shell-session-context.py",
