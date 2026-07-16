@@ -13,7 +13,6 @@ import {
   resolveAllAsSkillsNeutral,
   resolveBundledSkills,
   writeSkills,
-  writeSharedHooks,
   replacePythonCommandLiterals,
   applyPullBasedPreludeToml,
 } from "./shared.js";
@@ -78,19 +77,17 @@ export async function configureCodex(cwd: string): Promise<void> {
   const hooksDir = path.join(codexRoot, "hooks");
   ensureDir(hooksDir);
 
-  // Codex-specific hook files. hooks.json currently registers only
-  // UserPromptSubmit; session-start.py is retained as a compact compatibility
-  // template and regression surface.
+  // Codex-specific hook files (session-start.py + inject-workflow-state.py).
+  // hooks.json registers UserPromptSubmit -> inject-workflow-state.py; that
+  // script ships from templates/codex/hooks/ (NOT the shared-hooks path — its
+  // codex allowlist entry is [], the single source of truth), so getAllHooks()
+  // is the only writer and the registered command resolves to a real file.
   for (const hook of getAllHooks()) {
     await writeFile(
       path.join(hooksDir, hook.name),
       replacePythonCommandLiterals(hook.content),
     );
   }
-
-  // Shared hooks (inject-workflow-state.py only). Sub-agent context is
-  // pull-based (class-2).
-  await writeSharedHooks(hooksDir, "codex");
 
   // Hooks config → .codex/hooks.json
   await writeFile(

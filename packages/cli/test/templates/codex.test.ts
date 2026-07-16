@@ -196,6 +196,61 @@ describe("omp-flow codex adapter (deployed .codex surface)", () => {
     }
   });
 
+  // --- Assertion 7 (row F--002): registered hook script actually deploys ------
+  // The deployed hooks.json registers UserPromptSubmit -> inject-workflow-state.py
+  // as the codex router's sole per-turn <workflow-state> feed. Before this row
+  // that script never shipped (shared-hooks had no .py source), so the command
+  // targeted an absent file every turn. Assert it now deploys non-empty and the
+  // registered command path resolves to a real file (no dangling reference).
+  it("deploys the hooks.json UserPromptSubmit script with no dangling reference", () => {
+    type HookEntry = { hooks?: { command?: string }[] };
+    type HooksJson = { hooks?: { UserPromptSubmit?: HookEntry[] } };
+    const hooksJson = JSON.parse(
+      fs.readFileSync(path.join(codexDir, "hooks.json"), "utf-8"),
+    ) as HooksJson;
+    const commands: string[] = (hooksJson.hooks?.UserPromptSubmit ?? [])
+      .flatMap((entry) => entry.hooks ?? [])
+      .map((h) => h.command ?? "");
+    expect(commands.length).toBeGreaterThan(0);
+
+    // Every registered command's .codex-relative script path must resolve to a
+    // real, non-empty deployed file on disk (no dangling reference).
+    for (const command of commands) {
+      const match = command.match(/\.codex\/hooks\/[\w.-]+\.py/);
+      expect(
+        match,
+        `no .codex/hooks/*.py path in command: ${command}`,
+      ).not.toBeNull();
+      const rel = (match as RegExpMatchArray)[0];
+      const deployed = path.join(root, rel);
+      expect(fs.existsSync(deployed), `dangling hook reference: ${rel}`).toBe(
+        true,
+      );
+      expect(fs.statSync(deployed).size).toBeGreaterThan(0);
+    }
+
+    // The specific sole registered hook script is the one this row restored.
+    const injectPath = path.join(codexDir, "hooks", "inject-workflow-state.py");
+    expect(fs.existsSync(injectPath)).toBe(true);
+    expect(fs.readFileSync(injectPath, "utf-8").length).toBeGreaterThan(0);
+  });
+
+  // --- Assertion 8 (row F--002): init/update 0-drift for the codex hooks -------
+  it("emits byte-identical codex hook scripts from configureCodex and collectTemplates (0 drift)", () => {
+    const map = collectPlatformTemplates("codex") as Map<string, string>;
+    const hookKeys = [...map.keys()].filter((k) =>
+      /^\.codex\/hooks\/.*\.py$/.test(k),
+    );
+    // Both the compat session-start.py and the restored inject-workflow-state.py
+    // must be represented; inject-workflow-state.py in particular is present.
+    expect(hookKeys).toContain(".codex/hooks/inject-workflow-state.py");
+    expect(hookKeys.length).toBeGreaterThanOrEqual(2);
+    for (const key of hookKeys) {
+      const onDisk = fs.readFileSync(path.join(root, key), "utf-8");
+      expect(map.get(key), `collect/configure drift for ${key}`).toBe(onDisk);
+    }
+  });
+
   // --- R1 unit: detectAgentRole role mapping ----------------------------------
   it("detectAgentRole maps the 4 pull agents and returns null for qbd/unknown", () => {
     expect(detectAgentRole("omp-flow-research")).toBe("researcher");

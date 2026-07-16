@@ -52,8 +52,9 @@ export type SharedHookPlatform =
  *   hook event *except* codex + copilot, which bundle a platform-specific
  *   session-start.py under their own template dirs.
  * - `inject-workflow-state.py` — every platform with a UserPromptSubmit
- *   (or equivalent) event. Kiro + codex self-included; platforms without
- *   per-turn main-session hooks are excluded.
+ *   (or equivalent) event. Kiro self-included; codex ships its own copy from
+ *   `templates/codex/hooks/` (so its shared-hook list is empty — see below);
+ *   platforms without per-turn main-session hooks are excluded.
  * - `inject-subagent-context.py` — class-1 (push-based) platforms only.
  *   Class-2 (pull-based) platforms (codex, copilot, gemini, qoder) can't
  *   have hooks mutate sub-agent prompts — their sub-agents load context
@@ -86,7 +87,11 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
     "inject-shell-session-context.py",
     "inject-subagent-context.py",
   ],
-  codex: ["inject-workflow-state.py"],
+  // Codex ships inject-workflow-state.py from its OWN template dir
+  // (templates/codex/hooks/inject-workflow-state.py) via getAllHooks(), so it
+  // must NOT be re-delivered through the shared-hooks path — keeping this empty
+  // is the single source of truth and avoids double-delivery / drift.
+  codex: [],
   gemini: ["session-start.py", "inject-workflow-state.py"],
   qoder: ["session-start.py", "inject-workflow-state.py"],
   copilot: ["inject-workflow-state.py"],
