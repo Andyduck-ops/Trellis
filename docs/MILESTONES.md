@@ -156,12 +156,135 @@ and the remaining adapters stay parked. Two M3 findings were dispositioned
 DEFERRED by the user (see Beyond M2). The inherited seq lock flake +
 git-subprocess parallel-load timeout flakes (M1/M2 baseline) are unchanged.
 
+## M4 — Claude adapter polish  ✅ DELIVERED
+
+M4 delivered on branch `m1-claude-rebase`, 6 rows, commits `55e9d8c6`..`ef7ea41f`.
+It hardens the Claude harness adapter to a polished state — a quote-aware Bash
+guard that is provably no-weaker yet no longer strangles legitimate work,
+read-only inspection CLI verbs, and turn-zero methodology teaching — with the
+guarantee-critical changes confined to Python control-plane surfaces the Claude
+path already owned.
+
+| Commit | Row | Delivered |
+|--------|-----|-----------|
+| `55e9d8c6` | A-001 | Read-only CLI inspection verbs (`status --task` null-safe; `task show` summary-only; `topology list` non-fatal validation; `task select --task` alias; `task list --status/--phase`; `workflow explain [section]`) + `extract_section()` helper in `common/workflow.py` + `help=` sweep + examples epilog; fixes the four M3-session CLI misfires to exit 0; existing verb/hook envelopes byte-stable |
+| `abae1e50` | B-001 | Quote-aware Bash guard segment policy replacing the raw `_SHELL_META` scan in `protect-python-owned.py` — quote-aware liveness scan, wholesale-deny on live `< > ` backtick ` $ ( ) { }` and lone `&`, with `&& \|\| ; \|` newline as segment separators, per-segment managed-CLI rule OR frozen read-only allowlist (`cat head tail wc ls stat grep`; content-heads FILE-only), argv[0] interpreter rule, teaching deny messages; full D1-D20 deny / P1-P9 pass adversarial matrix; the one sanctioned P5 lock flip (`cd && managed-CLI`: deny→allow) |
+| `51500ca2` | C-001 | Idempotent `CLAUDE_ENV_FILE` export (repeated SessionStart firings → exactly one `OMP_FLOW_CONTEXT_ID` line) + truthful bridge comment (per RT2: the bridge works on 2.1.211; `--task` is the PowerShell fallback); no new bridge |
+| `faf69f47` | E-001 | Cosmetic sweep (behavior-neutral): delete the dead `maybePromptStatuslineOptIn` stub (`--with-statusline` stays the only path), flip `SHARED_HOOKS_BY_PLATFORM.claude` to `[]` (was unread + named a nonexistent `inject-subagent-context.py`), truth up stale codex/copilot no-op comments |
+| `4ef861ca` | D-A001--001 | Methodology-teaching payload: SessionStart-only bounded `<workflow-overview>` (≤60 lines) extracted from `workflow.md` via A's `extract_section` (no per-turn growth — AC5 byte-compare); richer `no_task`/`decompose` `<workflow-state>` blocks (pipeline, ID grammar, content-vs-state ownership); `guidance-specification.md` wiring (who/when/what into brainstorm+research skills; dead `guidance.md` ref fixed); `--task`-is-fallback doc-flip |
+| `ef7ea41f` | G-001 (amend-001) | Fix a pre-existing M1 rebrand-drift ENOENT: `templates/{omp,pi}/extensions/trellis` renamed to `omp-flow` (byte-preserving) + `pi/settings.json` aligned, so `getExtensionTemplate` resolves and `update`/`init` no longer abort when the omp/pi platform is configured; new `test/commands` regression test |
+
+The F-...--001 integration verify is verification-only (no commit).
+
+- **Read-only inspection CLI verbs (A-001, `55e9d8c6`).** The four CLI calls that
+  misfired in an M3 session (`status` on no active task, `task show`, `topology
+  list` on soft-invalid state, `task select`) now exit 0 as read-only inspection.
+  Added `task list --status/--phase` filters and `workflow explain [section]`
+  backed by a reusable `extract_section()` in `common/workflow.py` (the same helper
+  D-A001 reuses to slice `<workflow-overview>` out of `workflow.md`). Existing
+  verb/hook JSON envelopes are byte-stable — pure additive read surface.
+
+- **Robust-without-strangling is achievable but subtle (B-001, `abae1e50`).** The
+  pre-M4 guard over-blocked legitimate work (quoted args, read-only `cat`,
+  compound commands that merely *mention* the workflow dir). The quote-aware
+  rewrite unblocks the real shapes (P1-P9, incl. `cd && managed-CLI` and
+  pipe-consumers) while an independent 35-case adversarial battery found NO command
+  reading or mutating a protected byte that the new guard admits and pre-M4 denied.
+  **"Provably no-weaker" was made an ACCEPTANCE CRITERION** (the D1-D20 deny /
+  P1-P9 pass matrix), not an aspiration. QbD caught this same failure class at four
+  increasing depths *before any code was written* (qbd1 took 3 FAILs + a reset + 3
+  more rounds to PASS): round 1 caught two real guard escapes (lone-`&`
+  backgrounding, `grep -r` directory traversal); rounds 2-4 caught "only
+  workflow.md / Nothing else" boundary claims that contradicted what `init`
+  actually deploys (bundled-skills reach codex too; the platform-neutral
+  `.omp-flow/scripts` control plane deploys on every init). **Durable lesson:
+  enumerate boundary claims from DEPLOY REALITY down, not from intent up — audit
+  every "only"/"nothing else" claim against per-platform deploy reality.**
+
+- **The session-identity bridge already works — RT2 premise-shift (C-001,
+  `51500ca2`).** The `CLAUDE_ENV_FILE` session-identity bridge WORKS on Claude Code
+  2.1.211 (verified empirically — Bash calls need no `--task`; sub-agents +
+  PowerShell children inherit `OMP_FLOW_CONTEXT_ID`), and `updatedInput.env` is
+  schema-impossible (`BashInput` has no `env` field). So the planned "build a new
+  bridge" task collapsed to a dedupe (idempotent export → exactly one line under
+  repeated SessionStart firings) + a truthful comment; `--task` stays the
+  PowerShell fallback.
+
+- **Turn-zero methodology teaching + a half-wired mechanism finished (D-A001--001,
+  `4ef861ca`).** SessionStart now injects a bounded `<workflow-overview>` (≤60
+  lines, sliced from `workflow.md` via A's `extract_section`) exactly once — AC5
+  byte-compares consecutive turns to prove no per-turn growth — plus richer
+  `no_task`/`decompose` `<workflow-state>` blocks (pipeline, ID grammar,
+  content-vs-state ownership). `guidance-specification.md` was a half-wired
+  mechanism: the seed (`task_store.py`) + injection into every planning handoff
+  (`context.py`) already worked, but nothing told anyone to FILL it, and the
+  research skill referenced a nonexistent `guidance.md`. M4 wired it prose-only
+  (zero Python change) — the orchestrator fills it at brainstorm convergence, and
+  M4's own `guidance-specification.md` was the mechanism's first live use.
+
+- **Cosmetic + latent-ENOENT fixes (E-001 `faf69f47`; G-001 `ef7ea41f`).** E-001 is
+  behavior-neutral: deleting the dead `maybePromptStatuslineOptIn` stub, flipping
+  `SHARED_HOOKS_BY_PLATFORM.claude` to `[]` (it was unread and named a nonexistent
+  hook), and truthing up stale no-op comments. G-001 fixed a pre-existing M1
+  rebrand-drift ENOENT: the omp/pi extension source dir was still `trellis`, so
+  `getExtensionTemplate` threw and `update`/`init` aborted whenever the omp/pi
+  platform was configured; renamed byte-preserving to `omp-flow` with a
+  `test/commands` regression test.
+
+- **The gate-reset slot-collision defect (found live).** `reset_gate` returns the
+  attempt counter to 0 but does NOT relocate the prior cycle's `audit-NNN.md`
+  reports, so the post-reset prepare re-issues the same reserved slots and the next
+  auditor Write silently displaces the historical trail — violating evidence
+  append-only. M4's qbd1 hit this live and worked around it by archiving to
+  `reset-001-archive/`; it is a real control-plane fix candidate (see Beyond M2).
+
+**M4 acceptance (verified by the F-...--001 integration verify + independent
+review):** the guard's provably-no-weaker claim was held as an acceptance
+criterion, not an aspiration — the full D1-D20 deny / P1-P9 pass matrix holds and
+an independent 35-case adversarial battery found NO command reading or mutating a
+protected byte that the new guard admits and pre-M4 denied; the four M3-session
+CLI misfires now exit 0 with existing verb/hook envelopes byte-stable; the
+SessionStart-only `<workflow-overview>` is bounded (AC5 byte-compare proves no
+per-turn growth); `init --claude` still deploys a byte-identical toolchain with 0
+drift on `update`. The Claude control-plane changes are confined to surfaces the
+Claude path already owned; the F-...--001 integration verify is verification-only
+(no commit).
+
+**Baseline note:** M4 polishes only the **Claude** adapter; Codex (M3) and the
+remaining parked platforms are untouched. Several follow-ups were routed to
+tracked debt rather than coded (see Beyond M2). The inherited seq lock flake +
+git-subprocess parallel-load timeout flakes (M1/M2/M3 baseline) are unchanged.
+
 ## Beyond M2
 
 - Harness adapters: **Codex is now DELIVERED (M3)** at full 5-agent parity.
   `opencode` + the remaining platforms
   (gemini/qoder/copilot/cursor/kiro/droid/codebuddy/trae) stay parked with
   `parked` + milestone skip reasons in the test suite.
+- **The Claude adapter is now POLISHED (M4)** — a robust quote-aware Bash guard
+  (provably no-weaker), read-only inspection CLI verbs, and turn-zero methodology
+  teaching.
+- **M4 routed follow-ups / tracked debt** (dispositioned to a later milestone, not
+  coded in M4):
+  1. **`reset_gate` slot-collision** (control-plane fix) — reset returns the
+     attempt counter to 0 but does not relocate the prior cycle's `audit-NNN.md`
+     reports, so a post-reset auditor Write silently displaces the historical trail
+     (evidence append-only violation). Worked around in M4 by archiving to
+     `reset-001-archive/`; a real control-plane fix candidate.
+  2. **`.template-hashes.json` does not cover `.claude/hooks/**`** (deploy-hygiene)
+     — so `update` false-reports the Claude hooks as "modified by you".
+  3. **SessionStart-after-compaction re-injection live probe** (design D9) — the
+     `<workflow-overview>` re-inject-after-compaction path was not drivable from a
+     sub-agent; needs a live probe to confirm.
+  4. **Codex skill-prose dead-command cleanup** (carried from M3) —
+     `get_context.py` / `add_session.py` / `task list --mine` refs in codex
+     skill prose have no omp-flow equivalent (see the DEFERRED M3 finding below).
+  5. **Protected-path convergence debt (T7)** (documented, not coded) —
+     `protect-python-owned.py` `_PROTECTED` and the OMP extension
+     `PYTHON_OWNED_PATHS` are maintained separately; convergence + a Python
+     row-authoring command are still owed.
+  6. **OMP is still the last milestone** (user lukewarm) — OMP extension packaging
+     remains the trailing scope item.
 - **Two DEFERRED M3 findings** (dispositioned by the user, tracked for a later
   milestone):
   1. **Codex skill-prose dead-refs** — 7 `SKILL.md` files + 2 lines in
