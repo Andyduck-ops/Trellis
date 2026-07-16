@@ -629,6 +629,128 @@ describe("omp-flow Claude adapter parity (deployed hooks + fixtures)", () => {
     expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
   });
 
+  // (e') Row B-001: quote-aware Bash segment policy — the full adversarial matrix
+  //      (interface:bash-guard-segment-policy). D1-D15 + D17-D20 all deny; P1-P9
+  //      all pass; deny reasons match the frozen message-class table. This matrix
+  //      IS the "provably no-weaker" acceptance criterion. Fixture D16 (the
+  //      Write/Edit matrix untouched) is the standalone assertion already covered
+  //      by the Write blocks above. Qualifier: D/P here are FIXTURE ids, distinct
+  //      from the design's decision Dn table.
+  describe("Bash segment policy adversarial matrix (Row B-001)", () => {
+    function bashDecision(command: string): {
+      status: number | null;
+      decision: string;
+      reason: string;
+      stdout: string;
+    } {
+      const res = runWrapper(
+        "protect-python-owned.py",
+        root,
+        loadFixture("pretooluse-bash-omp-flow.json", {
+          __SESSION__: claudeSid,
+          __ROOT__: root,
+          __BASH_COMMAND__: command,
+        }),
+      );
+      let decision = "";
+      let reason = "";
+      if (res.stdout.trim()) {
+        const parsed = JSON.parse(res.stdout) as {
+          hookSpecificOutput?: {
+            permissionDecision?: string;
+            permissionDecisionReason?: string;
+          };
+        };
+        decision = parsed.hookSpecificOutput?.permissionDecision ?? "";
+        reason = parsed.hookSpecificOutput?.permissionDecisionReason ?? "";
+      }
+      return { status: res.status, decision, reason, stdout: res.stdout };
+    }
+
+    // Runtime values (root, claude.taskId) are only bound after beforeAll, so
+    // every command that needs them is built lazily inside the it() callback.
+    const csv = () => `.omp-flow/tasks/${claude.taskId}/tasks.csv`; // exists, NOT protected
+    const scriptAbs = () => path.join(root, ".omp-flow", "scripts", "omp_flow.py");
+
+    // MUST DENY — strict superset of the pre-M4 locked denials.
+    const denyCases: Array<{ id: string; cmd: () => string; match?: RegExp }> = [
+      { id: "D1", cmd: () => "python .omp-flow/scripts/omp_flow.py task current > steal.txt", match: /shell composition/ },
+      { id: "D2", cmd: () => "python .omp-flow/scripts/omp_flow.py task current && rm .omp-flow/config.json" },
+      { id: "D3", cmd: () => "cat .omp-flow/tasks/x/task.json", match: /managed omp_flow\.py/ },
+      { id: "D4", cmd: () => "echo hi > .omp-flow/tasks/t/evidence.csv", match: /shell composition/ },
+      { id: "D5", cmd: () => 'python .omp-flow/scripts/omp_flow.py evidence submit --reason "$(cat /etc/passwd)"', match: /shell composition/ },
+      { id: "D6", cmd: () => 'python .omp-flow/scripts/omp_flow.py --note "`rm -rf x`"', match: /shell composition/ },
+      { id: "D7", cmd: () => "cd .omp-flow/tasks/t && cat task.json" },
+      { id: "D8", cmd: () => "sed -i 's/a/b/' .omp-flow/tasks/t/tasks.csv" },
+      { id: "D9", cmd: () => "sort -o .omp-flow/tasks/t/tasks.csv input" },
+      { id: "D10", cmd: () => "tee .omp-flow/tasks/t/evidence.csv < x", match: /shell composition/ },
+      { id: "D11", cmd: () => 'python .omp-flow/scripts/omp_flow.py --note "abc', match: /unterminated/i },
+      { id: "D12", cmd: () => 'bash -c "cat .omp-flow/tasks/x/task.json"' },
+      { id: "D13", cmd: () => "(cat .omp-flow/tasks/x/tasks.csv)", match: /shell composition/ },
+      { id: "D14", cmd: () => "python .omp-flow/scripts/omp_flow.py task current; echo $SID", match: /shell composition/ },
+      { id: "D15", cmd: () => "ls .omp-flow/tasks/*/task.json", match: /glob|wildcard/i },
+      { id: "D17", cmd: () => "cat .omp-flow/tasks/t/tasks.csv & rm -rf .omp-flow/tasks/t", match: /shell composition/ },
+      { id: "D18", cmd: () => 'grep -r "" .omp-flow/tasks/t', match: /topology list|task show/ },
+      { id: "D19", cmd: () => "head .omp-flow/tasks/t", match: /topology list|task show/ },
+      { id: "D20", cmd: () => `rm "${scriptAbs()}"`, match: /omp_flow\.py/ },
+    ];
+    for (const c of denyCases) {
+      it(`denies fixture ${c.id}`, () => {
+        const r = bashDecision(c.cmd());
+        expect(r.decision).toBe("deny");
+        if (c.match) expect(r.reason).toMatch(c.match);
+      });
+    }
+
+    // MUST PASS — regression fixtures (P5 is the deliberate lock flip vs pre-M4).
+    const passCases: Array<{ id: string; cmd: () => string }> = [
+      { id: "P1", cmd: () => 'python .omp-flow/scripts/omp_flow.py evidence submit --reason "text (with parens)"' },
+      { id: "P2", cmd: () => 'python .omp-flow/scripts/omp_flow.py --note "a; b"' },
+      { id: "P3", cmd: () => `cat ${csv()}` },
+      { id: "P4", cmd: () => 'find . -name "*.md" && ls .omp-flow/tasks' },
+      { id: "P5", cmd: () => `cd "${root}" && python "${scriptAbs()}" task current` },
+      { id: "P6", cmd: () => "ls .omp-flow/tasks; ls .omp-flow/tasks/archive/2026-07" },
+      { id: "P7", cmd: () => "python .omp-flow/scripts/omp_flow.py --note 'a; b (c) $x'" },
+      { id: "P8", cmd: () => `python -X utf8 "${scriptAbs()}" --cwd "${root}" task current` },
+      { id: "P9", cmd: () => "python .omp-flow/scripts/omp_flow.py --cwd . task current | head -100" },
+    ];
+    for (const c of passCases) {
+      it(`passes fixture ${c.id}`, () => {
+        const r = bashDecision(c.cmd());
+        expect(r.status).toBe(0);
+        expect(r.stdout.trim()).toBe("");
+      });
+    }
+
+    // Message-class teaching content (interface message-class table), one
+    // representative per class. Legacy substrings ("shell composition",
+    // "managed omp_flow.py") are retained so pre-M4 locks keep passing.
+    it("deny reasons carry the frozen teaching content per message class", () => {
+      const hardmeta = bashDecision("python .omp-flow/scripts/omp_flow.py task current > x").reason;
+      expect(hardmeta).toMatch(/shell composition/);
+      expect(hardmeta).toMatch(/quote/i);
+
+      const protectedRead = bashDecision("cat .omp-flow/tasks/x/task.json").reason;
+      expect(protectedRead).toMatch(/managed omp_flow\.py/);
+      expect(protectedRead).toMatch(/task show|gate inspect|topology list/);
+
+      const dirTarget = bashDecision("head .omp-flow/tasks/t").reason;
+      expect(dirTarget).toMatch(/topology list|task show/);
+      expect(dirTarget).toMatch(/ls/);
+
+      const segment = bashDecision("cd .omp-flow/tasks/t && cat task.json").reason;
+      expect(segment).toMatch(/cat.*head.*tail.*wc.*ls.*stat.*grep/);
+      expect(segment).toMatch(/omp_flow\.py/);
+      expect(segment).toMatch(/python\b.*python3\b.*\bpy\b/);
+
+      const glob = bashDecision("ls .omp-flow/tasks/*/task.json").reason;
+      expect(glob).toMatch(/glob|wildcard/i);
+
+      const unterminated = bashDecision('python .omp-flow/scripts/omp_flow.py --note "abc').reason;
+      expect(unterminated).toMatch(/unterminated/i);
+    });
+  });
+
   // (f) Row A-001: read-only CLI inspection verbs + help sweep + workflow explain.
   //     Fixes the four M3 misfires (status --task / task show / topology list /
   //     task select --task) and lands the frozen shapes from
